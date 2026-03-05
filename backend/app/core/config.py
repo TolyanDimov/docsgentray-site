@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = 'postgresql+psycopg2://postgres:postgres@db:5432/docsgentray'
     redis_url: str = 'redis://redis:6379/0'
     admin_email: str = 'admin@example.com'
+    bot_api_token: str = 'change-bot-api-token'
 
 
 settings = Settings()

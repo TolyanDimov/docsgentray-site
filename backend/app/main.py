@@ -2,13 +2,15 @@ import csv
 import io
 from datetime import datetime
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.config import settings
 from app.core.db import Base, engine, get_db
 from app.models.user import User
 from app.models.license import License
@@ -19,7 +21,7 @@ from app.services.security import hash_password, verify_password, create_access_
 from app.services.license import generate_license, decode_device_key
 from app.api.deps import get_current_user, require_admin
 
-app = FastAPI(title='DocsGenTray API', version='1.1.0')
+app = FastAPI(title='DocsGenTray API', version='1.2.0')
 limiter = Limiter(key_func=get_remote_address)
 Base.metadata.create_all(bind=engine)
 
@@ -32,6 +34,10 @@ def _license_status(license_row: License | None) -> str:
     if license_row.expires_at < datetime.utcnow():
         return 'expired'
     return 'active'
+
+
+def _get_user_license_row(db: Session, user_id: int) -> License | None:
+    return db.query(License).filter(License.user_id == user_id).order_by(License.id.desc()).first()
 
 
 @app.get('/health')
@@ -48,6 +54,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         hashed_password=hash_password(payload.password),
         phone=payload.phone,
         telegram=payload.telegram,
+        is_admin=payload.email == settings.admin_email,
     )
     db.add(user)
     db.commit()
@@ -64,7 +71,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @app.get('/me')
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    license_row = db.query(License).filter(License.user_id == user.id).order_by(License.id.desc()).first()
+    license_row = _get_user_license_row(db, user.id)
     return {
         'email': user.email,
         'phone': user.phone,
@@ -112,7 +119,7 @@ def admin_users(
 
     rows = []
     for user in users:
-        lic = db.query(License).filter(License.user_id == user.id).order_by(License.id.desc()).first()
+        lic = _get_user_license_row(db, user.id)
         row_status = _license_status(lic)
         if status and row_status != status:
             continue
@@ -143,7 +150,7 @@ def admin_export_csv(db: Session = Depends(get_db), _: User = Depends(require_ad
     writer = csv.writer(out)
     writer.writerow(['ID', 'Email', 'Phone', 'Telegram', 'Tariff', 'ExpiresAt', 'Status'])
     for user in users:
-        lic = db.query(License).filter(License.user_id == user.id).order_by(License.id.desc()).first()
+        lic = _get_user_license_row(db, user.id)
         writer.writerow([
             user.id,
             user.email,
@@ -155,6 +162,35 @@ def admin_export_csv(db: Session = Depends(get_db), _: User = Depends(require_ad
         ])
     out.seek(0)
     return StreamingResponse(iter([out.getvalue()]), media_type='text/csv', headers={'Content-Disposition': 'attachment; filename=users.csv'})
+
+
+@app.get('/admin/users/export.xlsx')
+def admin_export_xlsx(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    users = db.query(User).order_by(User.id.asc()).all()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Users'
+    ws.append(['ID', 'Email', 'Phone', 'Telegram', 'Tariff', 'ExpiresAt', 'Status'])
+    for user in users:
+        lic = _get_user_license_row(db, user.id)
+        ws.append([
+            user.id,
+            user.email,
+            user.phone,
+            user.telegram,
+            lic.tariff if lic else '',
+            lic.expires_at.isoformat() if lic and lic.expires_at else '',
+            _license_status(lic),
+        ])
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return StreamingResponse(
+        stream,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': 'attachment; filename=users.xlsx'},
+    )
 
 
 @app.patch('/admin/users/{user_id}')
@@ -175,11 +211,10 @@ def admin_renew_license(user_id: int, payload: AdminLicenseActionRequest, db: Se
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
-    lic = db.query(License).filter(License.user_id == user.id).order_by(License.id.desc()).first()
+    lic = _get_user_license_row(db, user.id)
     if not lic:
         raise HTTPException(status_code=404, detail='License not found')
-    device_key = lic.device_key_payload
-    license_key, expires_at = generate_license(device_key, payload.tariff)
+    license_key, expires_at = generate_license(lic.device_key_payload, payload.tariff)
     lic.activation_key = license_key
     lic.tariff = payload.tariff
     lic.expires_at = expires_at
@@ -193,7 +228,7 @@ def admin_regenerate_key(user_id: int, db: Session = Depends(get_db), _: User = 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
-    lic = db.query(License).filter(License.user_id == user.id).order_by(License.id.desc()).first()
+    lic = _get_user_license_row(db, user.id)
     if not lic:
         raise HTTPException(status_code=404, detail='License not found')
     license_key, _ = generate_license(lic.device_key_payload, lic.tariff)
@@ -207,7 +242,7 @@ def admin_block_license(user_id: int, payload: AdminBlockRequest, db: Session = 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
-    lic = db.query(License).filter(License.user_id == user.id).order_by(License.id.desc()).first()
+    lic = _get_user_license_row(db, user.id)
     if not lic:
         raise HTTPException(status_code=404, detail='License not found')
     lic.is_blocked = payload.blocked
@@ -224,6 +259,28 @@ def admin_delete_user(user_id: int, db: Session = Depends(get_db), _: User = Dep
     db.delete(user)
     db.commit()
     return {'ok': True}
+
+
+@app.get('/bot/license/{email}')
+def bot_license_lookup(
+    email: str,
+    db: Session = Depends(get_db),
+    x_bot_token: str | None = Header(default=None),
+):
+    if x_bot_token != settings.bot_api_token:
+        raise HTTPException(status_code=401, detail='Invalid bot token')
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail='User not found')
+    lic = _get_user_license_row(db, user.id)
+    return {
+        'email': user.email,
+        'tariff': lic.tariff if lic else None,
+        'expires_at': lic.expires_at if lic else None,
+        'status': _license_status(lic),
+        'license_key': lic.activation_key if lic else None,
+    }
 
 
 @app.get('/seo/pages')

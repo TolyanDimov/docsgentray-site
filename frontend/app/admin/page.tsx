@@ -4,7 +4,10 @@ export default function AdminPage() {
   return (
     <main>
       <h1>Админ-панель</h1>
-      <p>Поддерживаются поиск, сортировка, фильтры, пагинация и экспорт CSV/Excel через backend API.</p>
+      <p>Управление пользователями и лицензиями: поиск, фильтры, пагинация, экспорт CSV/Excel.</p>
+      <p>
+        API endpoints: <code>/admin/users</code>, <code>/admin/users/export.csv</code>, <code>/admin/users/export.xlsx</code>
+      </p>
       <table>
         <thead>
           <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
