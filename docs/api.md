@@ -1,9 +1,21 @@
 # API Documentation
 
-Main endpoints:
+## Auth
 - `POST /auth/register`
 - `POST /auth/login`
+
+## User cabinet
 - `GET /me`
 - `POST /licenses/generate`
-- `GET /admin/users`
+
+## Admin panel
+- `GET /admin/users?q=&status=&page=&per_page=`
+- `GET /admin/users/export.csv`
+- `PATCH /admin/users/{user_id}`
+- `POST /admin/users/{user_id}/renew`
+- `POST /admin/users/{user_id}/regenerate-key`
+- `POST /admin/users/{user_id}/block`
+- `DELETE /admin/users/{user_id}`
+
+## SEO
 - `GET /seo/pages`

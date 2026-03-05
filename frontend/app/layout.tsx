@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { Nav } from '@/components/Nav';
 
 export const metadata: Metadata = {
   title: 'DocsGenTray — генератор документов из Excel',
@@ -11,10 +12,27 @@ export const metadata: Metadata = {
   },
 };
 
+const orgSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'DocsGenTray',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Windows',
+  offers: {
+    '@type': 'Offer',
+    priceCurrency: 'RUB',
+    price: '1990',
+  },
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang='ru'>
-      <body>{children}</body>
+      <body>
+        <Nav />
+        {children}
+        <script type='application/ld+json' dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }} />
+      </body>
     </html>
   );
 }
