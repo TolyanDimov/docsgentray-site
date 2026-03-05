@@ -1,7 +1,11 @@
 import json
 from datetime import datetime, timedelta, timezone
 from base64 import b64decode
-from license_service.crypto import sign_activation_payload
+
+try:
+    from license_service.crypto import sign_activation_payload
+except ModuleNotFoundError:
+    from app.services.license_crypto import sign_activation_payload
 
 TARIFF_DAYS = {'1m': 30, '3m': 90, '6m': 180, '12m': 365}
 
