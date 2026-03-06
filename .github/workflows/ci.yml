@@ -1,0 +1,31 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  lint-tests-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements.txt -r license-service/requirements.txt bandit
+      - run: python -m compileall backend license-service telegram-bot license_service
+      - run: pytest tests -q
+      - run: bandit -q -r backend license-service telegram-bot
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd frontend && npm ci && npm run build
+
+      - run: docker build -t docsgentray-backend ./backend
+      - run: docker build -t docsgentray-frontend ./frontend
+      - run: docker build -t docsgentray-bot ./telegram-bot
+
+      - name: Security scan containers (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: 'docsgentray-backend:latest'
+          format: 'table'
+          exit-code: '0'
