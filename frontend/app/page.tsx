@@ -1,18 +1,15 @@
-import Link from 'next/link';
+import { HeroSection } from '@/components/sections/hero';
+import { FeaturesGrid } from '@/components/sections/features';
+import { PricingSection } from '@/components/sections/pricing';
+import { CtaSection } from '@/components/sections/cta';
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <main>
-      <h1>DocsGenTray</h1>
-      <p>Оффлайн программа для генерации документов из Excel + Word/Excel шаблонов с PDF экспортом.</p>
-      <ul>
-        <li>Генерация документов из выделенных строк Excel</li>
-        <li>Поддержка шаблонов Word/Excel и плейсхолдеров</li>
-        <li>Опции PDF, печатей, штампов и подписей</li>
-      </ul>
-      <p>
-        <Link href='/pricing'>Купить лицензию</Link>
-      </p>
-    </main>
+    <>
+      <HeroSection />
+      <FeaturesGrid />
+      <PricingSection />
+      <CtaSection />
+    </>
   );
 }
