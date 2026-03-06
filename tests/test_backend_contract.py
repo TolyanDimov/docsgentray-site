@@ -28,3 +28,9 @@ def test_backend_license_service_fallback():
     content = Path('backend/app/services/license.py').read_text(encoding='utf-8')
     assert 'except ModuleNotFoundError' in content
     assert 'from app.services.license_crypto import sign_activation_payload' in content
+
+
+def test_backend_has_readiness_and_security_headers():
+    content = Path('backend/app/main.py').read_text(encoding='utf-8')
+    assert "@app.get('/ready')" in content
+    assert 'Content-Security-Policy' in content

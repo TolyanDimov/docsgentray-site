@@ -2,28 +2,39 @@ import csv
 import io
 from datetime import datetime
 
+import redis
 from fastapi import FastAPI, Depends, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
+from sqlalchemy import text, or_
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
 from app.core.db import Base, engine, get_db
-from app.models.user import User
 from app.models.license import License
+from app.models.user import User
+from app.schemas.admin import AdminUserUpdateRequest, AdminLicenseActionRequest, AdminBlockRequest
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
 from app.schemas.license import LicenseGenerateRequest, LicenseResponse
-from app.schemas.admin import AdminUserUpdateRequest, AdminLicenseActionRequest, AdminBlockRequest
-from app.services.security import hash_password, verify_password, create_access_token
 from app.services.license import generate_license, decode_device_key
-from app.api.deps import get_current_user, require_admin
+from app.services.security import hash_password, verify_password, create_access_token
 
-app = FastAPI(title='DocsGenTray API', version='1.2.0')
+app = FastAPI(title='DocsGenTray API', version='1.3.0')
 limiter = Limiter(key_func=get_remote_address)
 Base.metadata.create_all(bind=engine)
+
+
+@app.middleware('http')
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    return response
 
 
 def _license_status(license_row: License | None) -> str:
@@ -43,6 +54,13 @@ def _get_user_license_row(db: Session, user_id: int) -> License | None:
 @app.get('/health')
 def health() -> dict:
     return {'status': 'ok', 'service': 'backend'}
+
+
+@app.get('/ready')
+def ready(db: Session = Depends(get_db)) -> dict:
+    db.execute(text('SELECT 1'))
+    redis.Redis.from_url(settings.redis_url).ping()
+    return {'status': 'ready'}
 
 
 @app.post('/auth/register', response_model=TokenResponse)
